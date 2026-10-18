@@ -29,14 +29,26 @@ const SAMPLE_DATA: &str = concat!(
     "{\"type\": \"relation\", \"from\": \"Bob\", \"to\": \"Alice\", \"relationType\": \"knows\", \"createdAt\": null, \"lastUpdated\": null}\n",
 );
 
+/// Fixture with an entity whose name contains a slash (e.g. a GitHub
+/// `owner/repo` handle), plus a relation pointing at it from `Alice`.
+const SLASH_DATA: &str = concat!(
+    "{\"type\": \"entity\", \"name\": \"llhhaa/advanced_memory_mcp\", \"entityType\": \"Project\", \"observations\": [\"Rust rewrite\"], \"createdAt\": null, \"lastUpdated\": null}\n",
+    "{\"type\": \"entity\", \"name\": \"Alice\", \"entityType\": \"Person\", \"observations\": [], \"createdAt\": null, \"lastUpdated\": null}\n",
+    "{\"type\": \"relation\", \"from\": \"Alice\", \"to\": \"llhhaa/advanced_memory_mcp\", \"relationType\": \"co-maintains\", \"createdAt\": null, \"lastUpdated\": null}\n",
+);
+
 struct TestApp {
     app: Router,
     _dir: tempfile::TempDir,
 }
 
 fn test_app() -> TestApp {
+    test_app_with(SAMPLE_DATA)
+}
+
+fn test_app_with(data: &str) -> TestApp {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("alice.jsonl"), SAMPLE_DATA).unwrap();
+    std::fs::write(dir.path().join("alice.jsonl"), data).unwrap();
     let tokens_path = dir.path().join("tokens.json");
     std::fs::write(
         &tokens_path,
@@ -290,6 +302,53 @@ async fn entity_detail_404_for_missing() {
     let t = test_app();
     let cookie = session_cookie(RW_TOKEN);
     let (status, _, _) = send(&t.app, get("/ui/entity/Nobody", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn entity_detail_navigable_with_slash_in_name() {
+    let t = test_app_with(SLASH_DATA);
+    let cookie = session_cookie(RW_TOKEN);
+
+    // The raw (unencoded) form reported as a 404 must resolve.
+    let (status, _, body) = send(
+        &t.app,
+        get("/ui/entity/llhhaa/advanced_memory_mcp", Some(&cookie)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Rust rewrite"));
+
+    // The percent-encoded form (what the templates and graph JS emit) too.
+    let (status, _, _) = send(
+        &t.app,
+        get("/ui/entity/llhhaa%2Fadvanced_memory_mcp", Some(&cookie)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The list links to the slash entity as a single, encoded segment.
+    let (_, _, list) = send(&t.app, get("/ui/", Some(&cookie))).await;
+    assert!(list.contains("/ui/entity/llhhaa%2Fadvanced_memory_mcp"), "got {list}");
+}
+
+#[tokio::test]
+async fn delete_entity_with_slash_in_name() {
+    let t = test_app_with(SLASH_DATA);
+    let cookie = session_cookie(RW_TOKEN);
+    let (status, headers, _) = send(
+        &t.app,
+        json_req("DELETE", "/ui/api/entities/llhhaa/advanced_memory_mcp", Some(&cookie), ""),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["HX-Redirect"], "/ui/");
+
+    let (status, _, _) = send(
+        &t.app,
+        get("/ui/entity/llhhaa/advanced_memory_mcp", Some(&cookie)),
+    )
+    .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
