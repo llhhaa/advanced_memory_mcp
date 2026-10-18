@@ -13,7 +13,7 @@
 <section class="graph">
   <header class="detail-header">
     <h1>
-      {% if center %}Neighborhood of <a href="/ui/entity/{{ center|urlencode }}">{{ center }}</a>{% else %}Full graph{% endif %}
+      {% if center %}Neighborhood of <a href="/ui/entity/{{ center|pathsegment }}">{{ center }}</a>{% else %}Full graph{% endif %}
     </h1>
     <p class="muted">
       {% if center %}Depth {{ depth }}{% else %}{{ entity_count }} entities, {{ relation_count }} relations{% endif %}

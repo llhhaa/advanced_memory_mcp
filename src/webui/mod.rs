@@ -22,9 +22,14 @@ use axum::extract::Path;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{delete, get, patch, post};
-use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
+use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde_json::json;
 use std::sync::Arc;
+
+/// Percent-encode set for a single URL path segment. Like minijinja's
+/// `urlencode` filter except `/` is encoded too , so entity names containing
+/// slashes stay one path segment.
+const PATH_SEGMENT: &AsciiSet = &NON_ALPHANUMERIC.remove(b'.').remove(b'-').remove(b'_');
 
 pub struct WebUi {
     pub state: Arc<AppState>,
@@ -64,6 +69,9 @@ impl WebUi {
         // bare date or a full ISO instant).
         templates.add_filter("datepart", |value: String| {
             value.chars().take(10).collect::<String>()
+        });
+        templates.add_filter("pathsegment", |value: String| {
+            utf8_percent_encode(&value, PATH_SEGMENT).to_string()
         });
         for (name, source) in TEMPLATES {
             templates
@@ -154,12 +162,12 @@ pub fn router(state: Arc<AppState>, ui_secret: String) -> Router {
         .route("/ui/logout", post(views::logout))
         .route("/ui/", get(views::entity_list))
         .route("/ui/search", get(views::entity_list_rows))
-        .route("/ui/entity/{name}", get(views::entity_detail))
+        .route("/ui/entity/{*name}", get(views::entity_detail))
         .route("/ui/graph", get(views::graph_page))
         .route("/ui/api/graph", get(api::graph_data))
         .route("/ui/api/observations", patch(api::update_observation))
         .route("/ui/api/observations/delete", post(api::delete_observation))
-        .route("/ui/api/entities/{name}", delete(api::delete_entity))
+        .route("/ui/api/entities/{*name}", delete(api::delete_entity))
         .route("/ui/static/{*path}", get(serve_static))
         .with_state(ui)
 }

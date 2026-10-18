@@ -1,6 +1,6 @@
 {% for entity in entities %}
 <tr>
-  <td><a href="/ui/entity/{{ entity.name|urlencode }}">{{ entity.name }}</a></td>
+  <td><a href="/ui/entity/{{ entity.name|pathsegment }}">{{ entity.name }}</a></td>
   <td>{{ entity.entityType }}</td>
   <td class="num">{{ entity.observations|length }}</td>
   <td class="muted">{{ entity.lastUpdated or '' }}</td>
