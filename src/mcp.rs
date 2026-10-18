@@ -23,7 +23,7 @@ use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::tool::ToolCallContext;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
-    CallToolRequestParams, CallToolResult, Content, Implementation, JsonObject,
+    CallToolRequestParams, CallToolResult, Content, ErrorCode, Implementation, JsonObject,
     ListToolsResult, PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
     ToolAnnotations,
 };
@@ -35,6 +35,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub const SERVER_NAME: &str = "Advanced Memory MCP";
+
+const ERROR_UNAUTHORIZED: ErrorCode = ErrorCode(-32001);
 
 pub struct AppState {
     pub stores: StoreMap,
@@ -708,8 +710,16 @@ impl ServerHandler for MemoryServer {
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
+        let parts = context.extensions.get::<Parts>().ok_or_else(|| {
+            ErrorData::internal_error(
+                "tools/list requires an HTTP request context (streamable HTTP transport)",
+                None,
+            )
+        })?;
+        self.auth(parts)
+            .map_err(|e| ErrorData::new(ERROR_UNAUTHORIZED, e.to_string(), None))?;
         // The Python server advertises a permissive outputSchema on every
         // tool; the #[tool] macro can't set one, so add it (and behavioral
         // annotations) here.
